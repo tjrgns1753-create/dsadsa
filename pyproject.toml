@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memdev"
+version = "0.1.0"
+description = "DRAM/NAND cell device modeling and design notebooks"
+requires-python = ">=3.11"
+dependencies = ["numpy", "scipy", "matplotlib", "pyyaml", "ipywidgets"]
+
+[project.optional-dependencies]
+dev = ["pytest", "jupytext", "nbconvert", "nbformat", "ipykernel"]
+sim = ["devsim==2.11.2"]
+
+[tool.setuptools.packages.find]
+include = ["memdev*"]
+
+[tool.setuptools.package-data]
+"memdev.params" = ["*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

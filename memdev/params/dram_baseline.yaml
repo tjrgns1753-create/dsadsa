@@ -1,0 +1,71 @@
+# DRAM 기준 파라미터 세트. 모두 시험작에서 정한 가정값이며 공개 자료로 확인하기 전이다.
+cs:
+  value: 10e-15
+  unit: F
+  low: 2e-15
+  high: 30e-15
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+cbl:
+  value: 50e-15
+  unit: F
+  low: 10e-15
+  high: 200e-15
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+vdd:
+  value: 1.1
+  unit: V
+  low: 0.9
+  high: 1.4
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+sense_min:
+  value: 0.05
+  unit: V
+  low: 0.02
+  high: 0.15
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+i_leak_ref:
+  value: 2.5e-15
+  unit: A
+  low: 1e-17
+  high: 1e-12
+  source: 시험작 가정값, 공개 자료 확인 전 (t_ref_c에서의 셀 누설)
+  status: assumed
+t_ref_c:
+  value: 85
+  unit: degC
+  low: 25
+  high: 125
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+ea:
+  value: 0.6
+  unit: eV
+  low: 0.3
+  high: 1.2
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+t_refresh:
+  value: 0.064
+  unit: s
+  low: 0.008
+  high: 1.0
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+write_pulse:
+  value: 10e-9
+  unit: s
+  low: 1e-9
+  high: 100e-9
+  source: 시험작 가정값, 공개 자료 확인 전
+  status: assumed
+repair_limit:
+  value: 1000
+  unit: cells
+  low: 0
+  high: 1e6
+  source: 근거 미확인 가정값, D6에서 민감도로 다룸
+  status: assumed
