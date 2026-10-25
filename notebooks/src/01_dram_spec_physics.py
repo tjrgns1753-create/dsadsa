@@ -13,14 +13,29 @@
 # %% 준비 (Colab에서는 저장소를 내려받고 도구를 설치합니다. 다시 실행해도 됩니다.)
 import os, sys, subprocess
 BRANCH = "claude/feature-research"
+REPO_URL = "https://github.com/tjrgns1753-create/dsadsa"
+REPO_DIR = "/content/dsadsa"
+
+
+def _sync_repo(repo_dir, url, branch):
+    """저장소를 내려받거나 최신으로 맞춘다. 갱신에 실패해도 멈추지 않고 기존 코드로 계속한다."""
+    if not os.path.isdir(repo_dir):
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "-b", branch, url, repo_dir], check=True)
+        return
+    for cmd in (["git", "-C", repo_dir, "fetch", "-q", "--depth", "1", "origin", branch],
+                ["git", "-C", repo_dir, "reset", "-q", "--hard", "FETCH_HEAD"]):
+        if subprocess.run(cmd, capture_output=True).returncode != 0:
+            print("경고: 최신 코드로 갱신하지 못해 기존 코드로 계속합니다 (" + " ".join(cmd[3:5]) + ")")
+            return
+
+
 if "google.colab" in sys.modules:
-    if not os.path.isdir("/content/dsadsa"):
-        subprocess.run(["git", "clone", "-q", "--depth", "1", "-b", BRANCH,
-                        "https://github.com/tjrgns1753-create/dsadsa", "/content/dsadsa"], check=True)
-    else:
-        subprocess.run(["git", "-C", "/content/dsadsa", "pull", "-q"], check=True)
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "/content/dsadsa"], check=True)
-    sys.path.insert(0, "/content/dsadsa")
+    _sync_repo(REPO_DIR, REPO_URL, BRANCH)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", REPO_DIR], check=True)
+    if REPO_DIR not in sys.path:
+        sys.path.insert(0, REPO_DIR)
+    for _m in [m for m in sys.modules if m == "memdev" or m.startswith("memdev.")]:
+        del sys.modules[_m]  # 갱신된 코드를 다시 불러오도록 이전에 불러온 모듈을 지운다
 from memdev.colab import setup
 status = setup(install=True)
 print(status)
@@ -47,7 +62,7 @@ print(status)
 # 현업에서는 설계 전에 이런 표를 먼저 정합니다. 아래 값은 출발점이 되는 **가정**입니다.
 
 # %%
-from memdev.dram.spec import DramSpec, check_retention, check_signal, spec_table
+from memdev.dram.spec import DramSpec, evaluate_cell, spec_table
 
 SPEC = DramSpec()
 print(f"{'항목':8s} | {'목표':45s} | 의미")
@@ -62,7 +77,7 @@ for item, target, meaning in spec_table(SPEC):
 import matplotlib.pyplot as plt
 import numpy as np
 
-from memdev.dram.cell import bitline_signal, cell_voltage, fail_voltage, retention_time
+from memdev.dram.cell import cell_voltage, fail_voltage, retention_time
 from memdev.dram.leakage import arrhenius_leakage
 from memdev.params import load_params, values
 from memdev.plotting import plain_log_ticks, sim_label
@@ -110,8 +125,10 @@ plt.show()
 # %% [markdown]
 # **읽는 법**
 # - 왼쪽: 각 선이 검은 점선(읽기 실패 전압)과 만나는 시점이 그 온도의 리텐션 시간입니다.
-# - 오른쪽: 세로축이 10배씩 늘어나는 눈금인데 거의 직선입니다. 온도가 오르면 리텐션이 **일정 비율로** 줄어든다는 뜻이고,
-#   누설이 온도에 지수적으로 민감하기 때문입니다(**아레니우스 법칙**).
+# - 오른쪽: 세로축이 10배씩 늘어나는 눈금입니다. 온도가 오르면 리텐션이 지수적으로 줄어드는데, 누설이 온도에 지수적으로
+#   민감하기 때문입니다(**아레니우스 법칙**). 10°C당 줄어드는 비율은 온도마다 다릅니다: 25→35°C에서 약 2.1배,
+#   80→90°C에서 약 1.7배(Ea 0.6 eV 가정). 그래서 이 그래프는 살짝 휘어 있고, 가로축을 온도 대신 **1/T(절대온도의 역수)**로
+#   그리면 정확히 직선이 됩니다.
 
 # %% [markdown]
 # ## 4. 직접 바꿔 보기 (슬라이더)
@@ -134,18 +151,14 @@ from IPython.display import display
 
 def explore(cs_fF=10.0, cbl_fF=50.0, leak85_fA=2.5, temp_c=85, ea_eV=0.6, sense_mV=50):
     cs, cbl, vdd = cs_fF * 1e-15, cbl_fF * 1e-15, P["vdd"]
-    smin = sense_mV * 1e-3
     i_ref = leak85_fA * 1e-15
-    vf = fail_voltage(vdd, cs, cbl, smin)
-    dv = float(bitline_signal(vdd, vdd, cs, cbl))
-    t_now = retention_time(vdd, vf, leak(temp_c, i_ref, ea_eV), cs)
-    t_spec = retention_time(vdd, vf, leak(SPEC.retention_temp_c, i_ref, ea_eV), cs)
-    r_ret, r_sig = check_retention(t_spec, SPEC), check_signal(dv, SPEC)
+    ev = evaluate_cell(cs=cs, cbl=cbl, vdd=vdd, sense_min=sense_mV * 1e-3, i_ref=i_ref,
+                       t_ref_c=P["t_ref_c"], ea_ev=ea_eV, temp_c=temp_c, spec=SPEC)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.plot(t, cell_voltage(t, vdd, leak(temp_c, i_ref, ea_eV), cs), lw=2.5, color="#2b6cb0")
-    if vf < 1.2:
-        ax.axhline(vf, ls="--", color="black")
+    if ev.v_fail < 1.2:
+        ax.axhline(ev.v_fail, ls="--", color="black")
     ax.axvline(SPEC.retention_min_s, ls=":", color="gray")
     ax.set_xscale("log"); plain_log_ticks(ax.xaxis)
     ax.set_ylim(0, 1.2)
@@ -157,11 +170,13 @@ def explore(cs_fF=10.0, cbl_fF=50.0, leak85_fA=2.5, temp_c=85, ea_eV=0.6, sense_
     def verdict(r):
         return f"{'통과' if r.passed else '실패'} (여유 {r.margin:.2g}배)"
 
-    if vf >= vdd:
-        print(f"읽기 불가: 가득 찬 셀의 신호 {dv * 1e3:.1f} mV가 최소 감지값 {sense_mV} mV보다 작습니다.")
-    print(f"읽기 실패 전압: {vf:.3f} V,  가득 찬 셀의 신호: {dv * 1e3:.1f} mV → 읽기 신호 스펙 {verdict(r_sig)}")
-    print(f"{temp_c}°C 리텐션: {t_now:.3g} s")
-    print(f"스펙 조건({SPEC.retention_temp_c:g}°C) 리텐션: {t_spec:.3g} s → 리텐션 스펙 {verdict(r_ret)}")
+    if not ev.readable:
+        print(f"읽기 불가: 가득 찬 셀의 신호 {ev.signal_v * 1e3:.1f} mV가 최소 감지값 {sense_mV} mV보다 작습니다.")
+    print(f"읽기 실패 전압: {ev.v_fail:.3f} V,  가득 찬 셀의 신호: {ev.signal_v * 1e3:.1f} mV"
+          f" → 읽기 신호 (최소 {sense_mV} mV 기준) {verdict(ev.signal)}")
+    print(f"{temp_c}°C 리텐션: {ev.retention_now_s:.3g} s")
+    print(f"스펙 조건({SPEC.retention_temp_c:g}°C) 리텐션: {ev.retention_spec_s:.3g} s"
+          f" → 리텐션 스펙 {verdict(ev.retention)}")
 
 
 display(w.interactive(

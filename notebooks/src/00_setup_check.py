@@ -15,14 +15,29 @@
 # %% 준비 (Colab에서는 저장소를 내려받고 도구를 설치합니다. 다시 실행해도 됩니다.)
 import os, sys, subprocess
 BRANCH = "claude/feature-research"
+REPO_URL = "https://github.com/tjrgns1753-create/dsadsa"
+REPO_DIR = "/content/dsadsa"
+
+
+def _sync_repo(repo_dir, url, branch):
+    """저장소를 내려받거나 최신으로 맞춘다. 갱신에 실패해도 멈추지 않고 기존 코드로 계속한다."""
+    if not os.path.isdir(repo_dir):
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "-b", branch, url, repo_dir], check=True)
+        return
+    for cmd in (["git", "-C", repo_dir, "fetch", "-q", "--depth", "1", "origin", branch],
+                ["git", "-C", repo_dir, "reset", "-q", "--hard", "FETCH_HEAD"]):
+        if subprocess.run(cmd, capture_output=True).returncode != 0:
+            print("경고: 최신 코드로 갱신하지 못해 기존 코드로 계속합니다 (" + " ".join(cmd[3:5]) + ")")
+            return
+
+
 if "google.colab" in sys.modules:
-    if not os.path.isdir("/content/dsadsa"):
-        subprocess.run(["git", "clone", "-q", "--depth", "1", "-b", BRANCH,
-                        "https://github.com/tjrgns1753-create/dsadsa", "/content/dsadsa"], check=True)
-    else:
-        subprocess.run(["git", "-C", "/content/dsadsa", "pull", "-q"], check=True)
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "/content/dsadsa"], check=True)
-    sys.path.insert(0, "/content/dsadsa")
+    _sync_repo(REPO_DIR, REPO_URL, BRANCH)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", REPO_DIR], check=True)
+    if REPO_DIR not in sys.path:
+        sys.path.insert(0, REPO_DIR)
+    for _m in [m for m in sys.modules if m == "memdev" or m.startswith("memdev.")]:
+        del sys.modules[_m]  # 갱신된 코드를 다시 불러오도록 이전에 불러온 모듈을 지운다
 from memdev.colab import setup
 status = setup(install=True)
 print(status)
