@@ -1,4 +1,6 @@
 """그래프 공통 설정: 한글 폰트, 시뮬레이션 표시, 로그 눈금."""
+import logging
+
 from matplotlib import font_manager, rcParams
 from matplotlib.ticker import FuncFormatter
 
@@ -31,6 +33,9 @@ def setup_korean_font() -> str | None:
     if font is None:
         return None
     rcParams["font.family"] = font
+    # 일부 한글 폰트는 굵기 정보가 'normal'과 맞지 않아 findfont 경고가 반복된다. 글리프 누락 경고는
+    # warnings 모듈로 나오므로 이 설정과 무관하게 계속 보인다.
+    logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
     rcParams["axes.unicode_minus"] = False
     rcParams["mathtext.fontset"] = "dejavusans"
     return font
