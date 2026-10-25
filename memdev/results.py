@@ -41,8 +41,9 @@ def _to_json(obj):
     raise TypeError(f"JSON으로 저장할 수 없는 값: {type(obj).__name__}")
 
 
-def save_result(step: str, design: Design, data: dict) -> Path:
-    folder = work_dir() / "results" / step
+def save_result(step: str, design: Design, data: dict, root: Path | None = None) -> Path:
+    """결과를 root/step/<지문>.json에 저장한다. root가 없으면 작업 폴더의 results/."""
+    folder = (work_dir() / "results" if root is None else Path(root)) / step
     folder.mkdir(parents=True, exist_ok=True)
     record = {
         "step": step,

@@ -43,3 +43,8 @@ def test_precomputed_used_when_no_work_result(tmp_path, monkeypatch):
         f.rename(dst / f.name)
     r = load_result("D2", d)
     assert r.source == "precomputed" and r.data == {"i": 1.0}
+
+
+def test_save_result_to_explicit_root(tmp_path):
+    p = save_result("D2", Design(name="t"), {"i": 1.0}, root=tmp_path / "pc")
+    assert p.parent == tmp_path / "pc" / "D2"
