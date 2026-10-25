@@ -32,7 +32,9 @@ def setup_korean_font() -> str | None:
         font = next((f for f in KOREAN_FONTS if f in names), None)
     if font is None:
         return None
-    rcParams["font.family"] = font
+    # DejaVu Sans를 앞에 둔다: 로그 눈금(10^-9)은 첫 글꼴로 그리는 수학 표기라 U+2212 마이너스가 필요한데
+    # 한글 글꼴에는 없다. 한글처럼 DejaVu Sans에 없는 글자는 다음 글꼴(한글)로 넘어간다.
+    rcParams["font.family"] = ["DejaVu Sans", font]
     # 일부 한글 폰트는 굵기 정보가 'normal'과 맞지 않아 findfont 경고가 반복된다. 글리프 누락 경고는
     # warnings 모듈로 나오므로 이 설정과 무관하게 계속 보인다.
     logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)

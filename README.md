@@ -12,6 +12,7 @@
 |---|---|---|
 | 00 설치 확인 | ngspice, DEVSIM, 한글 폰트 확인 | [Open in Colab](https://colab.research.google.com/github/tjrgns1753-create/dsadsa/blob/claude/feature-research/notebooks/00_setup_check.ipynb) |
 | 01 스펙과 셀 물리 | D1 스펙, 전하 분배, 리텐션, 온도, 슬라이더 6개 | [Open in Colab](https://colab.research.google.com/github/tjrgns1753-create/dsadsa/blob/claude/feature-research/notebooks/01_dram_spec_physics.ipynb) |
+| 02 접합 누설 (DEVSIM) | 저장 노드 n+/p 접합의 역방향 누설: 전압·온도·도핑·수명, 활성화 에너지, 01 가정과 비교 | [Open in Colab](https://colab.research.google.com/github/tjrgns1753-create/dsadsa/blob/claude/feature-research/notebooks/02_devsim_leakage.ipynb) |
 
 Colab에서 **런타임 → 모두 실행**을 누르면 첫 셀이 저장소를 내려받고 도구를 설치합니다.
 
@@ -23,7 +24,7 @@ Colab에서 **런타임 → 모두 실행**을 누르면 첫 셀이 저장소를
 |---|---|---|
 | M0 | 저장소 뼈대, 설치 확인 노트북 | 완료 |
 | M1 | D1 스펙, 셀 기본 물리, 슬라이더 노트북 | 완료 |
-| M2 | D2 DEVSIM 접합 누설 | 예정 |
+| M2 | D2 DEVSIM 접합 누설 | 완료 |
 | M3 | D3 모델 추출 | 예정 |
 | M4 | D4 ngspice 셀 회로 | 예정 |
 | M5 | D5 민감도, D6 산포·코너 | 예정 |
