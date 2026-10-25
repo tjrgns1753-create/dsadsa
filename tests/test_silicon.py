@@ -37,3 +37,15 @@ def test_invalid_inputs():
 def test_junction_params_present():
     v = values("dram_baseline")
     assert (v["na"], v["nd"], v["tau_srh"], v["j_area"]) == (1e17, 1e19, 1e-6, 1e-11)
+
+
+def test_ni_apparent_activation_energy_matches_numeric_slope():
+    import math
+    from memdev.silicon import ni_activation_energy
+    k, t1, t2 = 8.617333262e-5, 84.0, 86.0
+    numeric = -(math.log(ni_silicon(t2)) - math.log(ni_silicon(t1))) / (
+        1 / (k * (t2 + 273.15)) - 1 / (k * (t1 + 273.15)))
+    assert ni_activation_energy(85.0) == pytest.approx(numeric, rel=1e-3)
+    # 교과서 근사 Eg/2보다 크다 (밴드갭의 온도 의존 + n_i 앞의 T^1.5 항)
+    assert ni_activation_energy(85.0) == pytest.approx(0.651, abs=0.005)
+    assert ni_activation_energy(85.0) > bandgap_ev(85.0) / 2

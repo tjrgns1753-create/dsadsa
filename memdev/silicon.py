@@ -47,3 +47,14 @@ def generation_bound(temp_c: float, na: float, nd: float, tau: float, reverse_v:
     """공핍층 전체에서 최대 생성률 ni/(2τ)를 가정한 SRH 생성 전류밀도 상한 [A/cm²]."""
     _require_positive(tau=tau)
     return Q * ni_silicon(temp_c) * depletion_width_cm(temp_c, na, nd, reverse_v) / (2 * tau)
+
+
+def ni_activation_energy(temp_c: float) -> float:
+    """n_i의 겉보기 활성화 에너지 −d ln(n_i)/d(1/kT) [eV].
+
+    교과서 근사 Eg/2보다 크다. 밴드갭이 온도에 따라 줄어드는 효과(−T·dEg/dT)와 n_i 앞의 T^1.5 항 때문이다:
+    Ea = (Eg − T·dEg/dT)/2 + 1.5·kT.
+    """
+    t = celsius_to_kelvin(temp_c)
+    deg_dt = -ALPHA * t * (t + 2 * BETA) / (t + BETA) ** 2
+    return (bandgap_ev(temp_c) - t * deg_dt) / 2 + 1.5 * K_B_EV * t

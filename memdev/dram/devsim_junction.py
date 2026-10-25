@@ -16,10 +16,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from memdev.colab import DEVSIM_MATH_LIBS
-from memdev.silicon import ni_silicon
+from memdev.silicon import depletion_width_cm, ni_silicon
 from memdev.units import Q, celsius_to_kelvin
 
 RAMP_STEP_V = 0.1
+REACH_THROUGH_FRACTION = 0.8  # 공핍층이 중성 영역 길이의 이 비율을 넘으면 거부
 
 
 class JunctionSimError(RuntimeError):
@@ -59,7 +60,7 @@ def _quiet():
 
 
 def simulate_junction(*, temp_c: float, na: float, nd: float, tau: float, biases_v: Sequence[float],
-                      length_cm: float = 1e-4, xj_cm: float = 0.5e-4, fine_cm: float = 1e-8,
+                      length_cm: float = 2.5e-4, xj_cm: float = 0.5e-4, fine_cm: float = 1e-8,
                       max_iterations: int = 60) -> JunctionResult:
     biases = [float(v) for v in biases_v]
     if any(v < 0 for v in biases):
@@ -69,6 +70,7 @@ def simulate_junction(*, temp_c: float, na: float, nd: float, tau: float, biases
     for name, value in (("na", na), ("nd", nd), ("tau", tau)):
         if value <= 0:
             raise ValueError(f"{name} must be positive, got {value}")
+    _check_reach_through(temp_c, na, nd, max(biases, default=0.0), length_cm, xj_cm)
     os.environ.setdefault("DEVSIM_MATH_LIBS", DEVSIM_MATH_LIBS)
     condition = f"{temp_c:g}°C, NA={na:.2g}, ND={nd:.2g}, τ={tau:.2g} s"
     try:
@@ -78,6 +80,17 @@ def simulate_junction(*, temp_c: float, na: float, nd: float, tau: float, biases
         if isinstance(e, (ValueError, JunctionSimError)):
             raise
         raise JunctionSimError(f"DEVSIM이 수렴하지 못했습니다 ({condition}, 바이어스 {biases} V): {e}") from e
+
+
+def _check_reach_through(temp_c, na, nd, reverse_v, length_cm, xj_cm) -> None:
+    """공핍층이 단자에 닿으면(reach-through) 단자가 소수 캐리어를 직접 공급해 누설이 구조 탓으로 부풀려진다."""
+    w = depletion_width_cm(temp_c, na, nd, reverse_v)
+    x_p, x_n = w * nd / (na + nd), w * na / (na + nd)
+    p_len, n_len = length_cm - xj_cm, xj_cm
+    if x_p >= REACH_THROUGH_FRACTION * p_len or x_n >= REACH_THROUGH_FRACTION * n_len:
+        raise ValueError(
+            f"공핍층이 단자에 거의 닿습니다(p쪽 {x_p * 1e4:.2f} µm / 영역 {p_len * 1e4:.2f} µm, "
+            f"n쪽 {x_n * 1e4:.3f} µm / 영역 {n_len * 1e4:.2f} µm). 구조를 길게 하거나 도핑을 높이세요.")
 
 
 def _run(temp_c, na, nd, tau, biases, length_cm, xj_cm, fine_cm, max_iterations) -> JunctionResult:

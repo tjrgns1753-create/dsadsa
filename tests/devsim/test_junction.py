@@ -71,3 +71,15 @@ def test_no_solver_output_leaks(capfd):
     simulate_junction(**BASE, biases_v=[1.0])
     out, err = capfd.readouterr()
     assert "Iteration" not in out + err and "RelError" not in out + err
+
+
+def test_reach_through_is_rejected():
+    # p 영역 0.5 µm에 NA = 1e16이면 1.5 V에서 공핍층이 단자에 닿는다
+    with pytest.raises(ValueError, match="공핍층"):
+        simulate_junction(temp_c=85.0, na=1e16, nd=1e19, tau=1e-6, biases_v=[1.5],
+                          length_cm=1e-4, xj_cm=0.5e-4)
+
+
+def test_default_geometry_has_room_for_lowest_doping():
+    r = simulate_junction(temp_c=85.0, na=1e16, nd=1e19, tau=1e-6, biases_v=[1.5])
+    assert r.j_total[0] > 0

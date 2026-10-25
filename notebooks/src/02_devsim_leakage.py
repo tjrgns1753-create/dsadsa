@@ -51,8 +51,8 @@ print(status)
 #
 # | 성분 | 원리 | 온도 민감도 |
 # |---|---|---|
-# | **생성 전류** | 공핍층 안의 트랩(결함)을 거쳐 전자-정공 쌍이 생겨 전계에 끌려감 (SRH 생성) | n_i에 비례 → 활성화 에너지 ≈ Eg/2 ≈ 0.56 eV |
-# | **확산 전류** | 공핍층 밖에서 소수 캐리어가 공핍층으로 확산해 들어옴 | n_i²에 비례 → 활성화 에너지 ≈ Eg ≈ 1.12 eV |
+# | **생성 전류** | 공핍층 안의 트랩(결함)을 거쳐 전자-정공 쌍이 생겨 전계에 끌려감 (SRH 생성) | n_i에 비례 → 활성화 에너지 ≈ Eg/2 (교과서 근사 0.56 eV, 실제 겉보기 값은 약 0.65 eV) |
+# | **확산 전류** | 공핍층 밖에서 소수 캐리어가 공핍층으로 확산해 들어옴 | n_i²에 비례 → 활성화 에너지 ≈ Eg (교과서 근사 1.12 eV, 실제 겉보기 값은 약 1.3 eV) |
 #
 # SRH 생성률: $U = \dfrac{np - n_i^2}{\tau_p(n+n_1) + \tau_n(p+p_1)}$. 공핍층에서는 n, p가 매우 작아 $U \approx -n_i/(2\tau)$, 즉 **생성**이 됩니다.
 # 캐리어 수명 τ가 짧을수록(트랩이 많을수록) 누설이 큽니다.
@@ -61,7 +61,8 @@ print(status)
 # 실제로는 공핍층 가장자리에서 생성이 줄고, 확산 성분이 더해지고, 전압·도핑에 따라 둘의 비중이 바뀝니다. 시뮬레이터는 포아송 방정식과
 # 전자·정공 연속 방정식을 격자 위에서 함께 풀어 이걸 직접 계산합니다.
 #
-# **구조 (1차원)**: 위쪽 0.5 µm는 n+ 저장 노드(도핑 ND), 아래쪽 0.5 µm는 p 웰(도핑 NA), 급격한 접합. 위쪽에 역방향 전압 V_R을 겁니다.
+# **구조 (1차원)**: 위쪽 0.5 µm는 n+ 저장 노드(도핑 ND), 아래쪽 2 µm는 p 웰(도핑 NA), 급격한 접합. 위쪽에 역방향 전압 V_R을 겁니다.
+# 공핍층이 단자에 닿으면(reach-through) 단자가 캐리어를 직접 공급해 누설이 부풀려지므로, 그런 조건은 계산하지 않고 알려 줍니다.
 #
 # **시뮬레이션하면서 잡은 두 가지 함정** (면접에서 말할 거리)
 # 1. DEVSIM 기본 모델은 진성 캐리어 농도 n_i를 온도와 무관한 상수로 둡니다. 그대로 쓰면 온도를 바꿔도 누설이 안 변하므로 n_i(T)를 직접 넣었습니다.
@@ -74,9 +75,10 @@ import numpy as np
 
 from memdev.design import design_table, load_design
 from memdev.dram.d2 import D2_REF, run_d2_sweep
-from memdev.plotting import plain_log_ticks, sim_label
+from memdev.plotting import sim_label
 from memdev.results import ResultMissing, load_result, save_result
-from memdev.silicon import bandgap_ev, generation_bound
+from memdev.dram.d2 import fit_activation_energy
+from memdev.silicon import generation_bound, ni_activation_energy
 from memdev.units import K_B_EV
 
 DESIGN = load_design()
@@ -134,8 +136,12 @@ fig, ax = plt.subplots(figsize=(8, 4.8))
 ax.semilogy(inv_kt, jt, "o-", color="#2d3748", lw=2, label=f"전체 (맞춘 Ea = {D2['ea_ev']:.2f} eV, 65°C 이상)")
 ax.semilogy(inv_kt, jg, "s--", color="#2b6cb0", label="생성 성분")
 ax.semilogy(inv_kt, jd, "^--", color="#c53030", label="확산 성분")
-x0, y0 = inv_kt[I_REF_T], jt[I_REF_T]
-for ea, style, name in ((bandgap_ev(85.0) / 2, ":", "Eg/2 기울기"), (bandgap_ev(85.0), "-.", "Eg 기울기")):
+# 기대 기울기: 생성 ∝ n_i, 확산 ∝ n_i²·D (이 모델은 이동도가 일정해 D ∝ T) → 2·Ea(n_i) + kT
+ea_ni = ni_activation_energy(D2_REF["temp_c"])
+ea_diff_expected = 2 * ea_ni + K_B_EV * (D2_REF["temp_c"] + 273.15)
+x0 = inv_kt[I_REF_T]
+for ea, y0, style, name in ((ea_ni, jg[I_REF_T], ":", f"생성 기대 기울기 {ea_ni:.2f} eV"),
+                            (ea_diff_expected, jd[I_REF_T], "-.", f"확산 기대 기울기 {ea_diff_expected:.2f} eV")):
     ax.semilogy(inv_kt, y0 * np.exp(-ea * (inv_kt - x0)), style, color="gray", label=name)
 for x, y, t in zip(inv_kt, jt, TEMPS):
     ax.annotate(f"{t:g}°C", (x, y), textcoords="offset points", xytext=(4, 6), fontsize=8)
@@ -146,13 +152,20 @@ ax.legend(fontsize=8)
 ax.grid(alpha=0.3, which="both")
 plt.show()
 
+ea_gen_fit, ea_diff_fit = fit_activation_energy(TEMPS, jg), fit_activation_energy(TEMPS, jd)
+print(f"맞춘 활성화 에너지: 생성 {ea_gen_fit:.2f} eV (기대 {ea_ni:.2f}), 확산 {ea_diff_fit:.2f} eV (기대 {ea_diff_expected:.2f}),"
+      f" 전체(65°C 이상) {D2['ea_ev']:.2f} eV")
+print("온도별 확산/생성 비:", ", ".join(f"{t:g}°C {d / g:.2f}" for t, g, d in zip(TEMPS, jg, jd)))
+
 # %% [markdown]
 # **읽는 법**
 # - 가로축이 1/kT라서 아레니우스 법칙을 따르는 성분은 **직선**이 되고, 기울기가 활성화 에너지입니다.
-# - 생성 성분(파랑)은 Eg/2 기울기, 확산 성분(빨강)은 Eg 기울기를 따릅니다. 확산이 온도에 더 민감해서, **온도가 오를수록 확산 비중이 커지고**
-#   이 구조에서는 약 95°C에서 확산이 생성을 넘어섭니다.
-# - 그래서 전체 누설의 활성화 에너지는 두 값 사이(맞춘 값 위 범례)로 나옵니다. 01에서 가정한 0.6 eV는 생성 위주일 때의 값에 가깝습니다.
-# - 주의: 확산 성분의 크기는 p 영역 길이(단자까지 0.5 µm) 같은 **구조**에 따라 달라집니다.
+# - 생성 성분(파랑)은 n_i에, 확산 성분(빨강)은 n_i²에 비례하므로 각각 점선 기울기를 따릅니다(위 출력의 맞춘 값과 기대값 비교).
+# - 교과서에서는 Eg/2 ≈ 0.56 eV, Eg ≈ 1.12 eV라고 하지만, 실제 그래프의 기울기는 조금 더 큽니다. 밴드갭이 온도가 오를수록 줄어드는 효과와
+#   n_i 앞에 붙은 T^1.5 항 때문입니다: Ea(n_i) = (Eg − T·dEg/dT)/2 + 1.5kT ≈ 0.65 eV.
+# - 확산이 온도에 더 민감해서 **온도가 오를수록 확산 비중이 커집니다**(위 출력의 확산/생성 비). 이 구조(p 영역 2 µm)에서는 95°C까지 생성이 지배합니다.
+# - 전체 누설의 활성화 에너지는 두 값 사이로 나옵니다. 01에서 가정한 0.6 eV는 생성 위주일 때에 가깝습니다.
+# - 주의: 확산 성분의 크기는 p 영역 길이 같은 **구조**에 따라 크게 달라집니다(짧은 구조일수록 커짐). 생성 성분은 구조 길이와 무관합니다.
 
 # %% [markdown]
 # ## 4. 도핑과 캐리어 수명의 영향 (85°C, 1.1 V)
@@ -169,7 +182,7 @@ ax1.set_title("NA 영향", fontsize=10)
 ax1.grid(alpha=0.3, which="both")
 ax2.loglog(tau_s["tau"], tau_s["j_total"], "o-", color="#c53030")
 ax2.axhline(j_needed, ls="--", color="black")
-ax2.text(tau_s["tau"][0], j_needed * 1.5, "01의 가정 누설(2.5 fA)에 해당", fontsize=8)
+ax2.text(tau_s["tau"][0], j_needed * 1.5, f"01의 가정 누설({P['i_leak_ref'] * 1e15:.3g} fA)에 해당", fontsize=8)
 ax2.axvline(P["tau_srh"], ls=":", color="gray")
 ax2.set_xlabel("캐리어 수명 τ (s)")
 ax2.set_title("τ 영향 (트랩이 많을수록 τ가 짧음)", fontsize=10)
@@ -181,9 +194,9 @@ plt.show()
 # %% [markdown]
 # **읽는 법**
 # - **τ**: 생성 전류는 1/τ에 비례합니다. 트랩(결함)이 많을수록 누설이 커지니, 공정에서 결함을 줄이는 것이 리텐션 개선의 핵심입니다.
-# - **NA**: 이 모델에서는 NA가 클수록 누설이 줄어듭니다(소수 캐리어 n_i²/NA와 공핍층 폭이 줄기 때문). **하지만 이건 모델의 한계 때문에 생긴 경향입니다.**
-#   실제 소자에서는 도핑이 높을수록 접합 전계가 세져서 **전계 강화·트랩 보조 터널링(TAT)** 누설이 급증합니다. 이 모델은 그 효과를 넣지 않았습니다.
-#   그래서 실제 DRAM은 저장 노드 접합의 도핑 경사를 완만하게 만들어 전계를 낮춥니다.
+# - **NA**: NA가 클수록 공핍층이 좁아지고(생성 감소) 소수 캐리어 n_i²/NA도 줄어(확산 감소) 누설이 줄어듭니다. SRH 생성과 확산만 보면 맞는 경향입니다.
+#   **그런데 이 모델에 없는 효과가 있습니다.** 도핑이 높을수록 접합 전계가 세지고, 강한 전계에서는 **트랩 보조 터널링(TAT)** 누설이 급증합니다.
+#   실제 소자에서는 이 효과 때문에 도핑이 높을 때 경향이 뒤집힐 수 있고, 그래서 DRAM은 저장 노드 접합의 도핑 경사를 완만하게 만들어 전계를 낮춥니다.
 
 # %% [markdown]
 # ## 5. 셀 하나의 누설: 01의 가정과 비교
@@ -201,11 +214,18 @@ display(Markdown("\n".join([
     f"| 01의 가정 누설 | {assumed_fa:.3g} fA |",
     f"| 차이 | 약 {assumed_fa / cell_fa:.0f}배 |",
 ])))
+# τ 스윕에서 가정 누설에 해당하는 τ를 로그 보간으로 찾는다 (생성 ∝ 1/τ 구간)
+log_tau, log_j = np.log10(tau_s["tau"]), np.log10(tau_s["j_total"])
+if log_j.min() <= np.log10(j_needed) <= log_j.max():
+    tau_match = 10 ** np.interp(np.log10(j_needed), log_j[::-1], log_tau[::-1])
+    print(f"가정 누설에 해당하는 캐리어 수명: τ ≈ {tau_match:.2g} s")
+else:
+    print("가정 누설은 τ 스윕 범위 밖입니다.")
 
 # %% [markdown]
 # **이 차이가 말해 주는 것**
 # - 트랩을 통한 SRH 생성과 확산만으로 계산하면(τ = 1 µs) 누설이 01의 가정보다 **수백 배 작습니다.**
-# - 4절의 τ 그래프에서 검은 점선과 만나는 곳을 보면 τ가 **약 1 ns** 수준이어야 가정 누설이 나옵니다. 그만큼 결함이 많은 영역이거나,
+# - 아래 출력처럼, 4절 τ 그래프에서 검은 점선과 만나는 τ여야 가정 누설이 나옵니다. 그만큼 결함이 많은 영역이거나,
 # - 이 모델에 없는 메커니즘이 실제 누설을 지배한다는 뜻입니다: 강한 전계에서의 **트랩 보조 터널링(TAT)**, 접근 트랜지스터의 **GIDL**과 서브스레숄드 누설.
 # - 이 차이를 어떻게 메울지(어떤 모델과 파라미터로 리텐션을 계산할지)는 **D3 모델 추출**에서 정합니다.
 
@@ -248,16 +268,18 @@ display(ui, design_save_panel(lambda: {"na": na_w.value, "tau_srh": tau_w.value}
 # ## 7. 면접에서 이렇게 말할 수 있습니다
 #
 # > "DRAM 저장 노드는 n+/p 접합이라 '1'을 저장하면 역방향 바이어스가 걸리고, 공핍층의 트랩을 통한 SRH 생성 전류와 중성 영역의 확산 전류가 누설이 됩니다.
-# > 생성은 n_i에, 확산은 n_i²에 비례해서 활성화 에너지가 각각 Eg/2, Eg 근처이고, 고온일수록 확산 비중이 커집니다.
+# > 생성은 n_i에, 확산은 n_i²에 비례해서 활성화 에너지가 각각 Eg/2, Eg 근처입니다(밴드갭의 온도 의존 때문에 실제 겉보기 값은 약 0.65, 1.3 eV). 고온일수록 확산 비중이 커집니다.
 # > DEVSIM으로 1D 접합을 풀어 보니 τ = 1 µs의 SRH만으로는 셀당 누설이 fA보다 훨씬 작게 나왔고, 실제 수준을 설명하려면 짧은 수명이나 전계 강화 터널링, GIDL 같은 메커니즘이 필요하다는 걸 확인했습니다.
 # > 시뮬레이션 중에는 n_i의 온도 의존이 빠진 기본 모델과, 단자 전류의 수치 상쇄 오차 문제를 찾아 고쳤습니다."
 
 # %% [markdown]
 # ## 8. 한계
-# - 1차원 급격 접합입니다. 실제 저장 노드는 3차원 구조이고 도핑이 경사져 있습니다.
+# - **1차원 급격 접합입니다.** 실제 셀은 게이트가 실리콘에 묻힌 3차원 구조라, 게이트-저장 노드 겹침부의 **GIDL**과 모서리·STI 경계의 전계 집중 누설이 큽니다.
+#   1차원은 이것을 원리적으로 담을 수 없습니다. 1차원으로 얻는 것은 메커니즘 구분, 온도·수명 의존, 면적당 누설입니다.
 # - 전계 강화(Poole-Frenkel)·트랩 보조 터널링, 밴드 간 터널링을 넣지 않았습니다. 그래서 도핑이 높을 때의 누설을 과소평가합니다.
 # - 트랩은 밴드갭 한가운데 하나(n1 = p1 = n_i)이고 τn = τp로 같다고 두었습니다.
-# - 확산 성분은 단자까지의 거리(구조 길이)에 의존합니다.
+# - 확산 성분은 단자까지의 거리(구조 길이)에 의존합니다. 중성 영역이 짧아(2 µm) 확산은 τ와 무관하게 단자에서 공급되므로, τ 그래프가 τ가 길 때 평평해집니다.
+# - 이동도가 일정합니다(DEVSIM 기본 모델: 온도·도핑 의존 없음). 확산 성분의 크기와 기울기에 영향을 줍니다.
 # - 모든 파라미터는 가정값입니다.
 
 # %% [markdown]

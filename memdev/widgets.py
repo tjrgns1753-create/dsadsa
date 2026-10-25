@@ -34,10 +34,17 @@ def design_save_panel(get_values: Callable[[], dict[str, float]], default_name: 
             print("다음 노트북은 이 설계안을 씁니다. 이 노트북 위쪽 그래프에 반영하려면 '런타임 → 모두 실행'을 누르세요.")
 
     def on_reset(_):
+        # 이 노트북이 다루는 항목만 기준값으로 돌린다. 다른 노트북에서 바꾼 값은 유지한다.
         with msg:
             msg.clear_output()
-            save_design(Design(name="baseline"))
-            print("기준 설계안으로 되돌렸습니다. '런타임 → 모두 실행'을 누르면 슬라이더도 기준값으로 돌아갑니다.")
+            keys = list(get_values())
+            current = load_design()
+            base = Design(name="baseline", base=current.base).values()
+            design = merge_into_current({k: base[k] for k in keys}, name=current.name)
+            save_design(design)
+            print(f"이 노트북의 항목({', '.join(keys)})을 기준값으로 되돌렸습니다. "
+                  f"다른 노트북에서 바꾼 항목은 유지합니다: {list(design.overrides) or '없음'}")
+            print("'런타임 → 모두 실행'을 누르면 슬라이더도 기준값으로 돌아갑니다.")
 
     def on_download(_):
         with msg:
