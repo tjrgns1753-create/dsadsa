@@ -69,3 +69,31 @@ repair_limit:
   high: 1e6
   source: 근거 미확인 가정값, D6에서 민감도로 다룸
   status: assumed
+na:
+  value: 1e17
+  unit: cm^-3
+  low: 1e16
+  high: 1e18
+  source: M2 가정값, 공개 자료 확인 전 (p 웰 억셉터 농도)
+  status: assumed
+nd:
+  value: 1e19
+  unit: cm^-3
+  low: 1e18
+  high: 1e20
+  source: M2 가정값, 공개 자료 확인 전 (n+ 저장 노드 도너 농도)
+  status: assumed
+tau_srh:
+  value: 1e-6
+  unit: s
+  low: 1e-10
+  high: 1e-3
+  source: M2 가정값, 공개 자료 확인 전 (SRH 캐리어 수명, 트랩 밀도의 대리 변수)
+  status: assumed
+j_area:
+  value: 1e-11
+  unit: cm^2
+  low: 1e-12
+  high: 1e-9
+  source: M2 가정값, 공개 자료 확인 전 (셀당 저장 노드 접합 면적)
+  status: assumed
