@@ -79,10 +79,12 @@ import numpy as np
 
 from memdev.dram.cell import cell_voltage, fail_voltage, retention_time
 from memdev.dram.leakage import arrhenius_leakage
-from memdev.params import load_params, values
+from memdev.design import Design, changes_from_base, design_table, load_design, save_design
 from memdev.plotting import plain_log_ticks, sim_label
 
-P = values("dram_baseline")
+DESIGN = load_design()
+P = DESIGN.values()
+print(f"사용 중인 설계안: {DESIGN.name} (기준값에서 바꾼 항목: {list(DESIGN.overrides) or '없음'})")
 V_FAIL = fail_voltage(P["vdd"], P["cs"], P["cbl"], P["sense_min"])
 TEMPS = [25, 45, 65, 85, 95]
 COLORS = ["#2b6cb0", "#319795", "#d69e2e", "#dd6b20", "#c53030"]
@@ -118,7 +120,7 @@ ax2.text(2, SPEC.retention_min_s * 1.3, "스펙 64 ms", fontsize=9, color="gray"
 ax2.set_yscale("log"); plain_log_ticks(ax2.yaxis)
 ax2.set_xlabel("온도 (°C)"); ax2.set_ylabel("리텐션 시간 (초)")
 ax2.set_title("온도 vs 리텐션"); ax2.grid(alpha=0.3, which="both")
-fig.suptitle(sim_label("dram_baseline"), fontsize=10)
+fig.suptitle(sim_label(f"설계안 {DESIGN.name}"), fontsize=10)
 fig.tight_layout()
 plt.show()
 
@@ -143,6 +145,10 @@ plt.show()
 # | 최소 신호 | 센스앰프가 구분하는 최소 신호 | 읽기 실패 전압이 올라감 |
 #
 # 슬라이더를 움직이면 아래 그래프와 판정이 바로 바뀝니다. (Colab에서 실행할 때 동작합니다.)
+#
+# 마음에 드는 설계를 찾았으면 **[현재 설계안으로 저장]** 을 누르세요. 다음 단계 노트북들이 이 설계안을 씁니다.
+# 온도 슬라이더는 설계 값이 아니라 동작 조건이라 저장하지 않습니다.
+# Colab 런타임이 초기화되면 저장한 설계안도 사라지니, 남겨 두려면 **[설계안 파일 내려받기]** 를 누르세요.
 
 # %%
 import ipywidgets as w
@@ -163,7 +169,7 @@ def explore(cs_fF=10.0, cbl_fF=50.0, leak85_fA=2.5, temp_c=85, ea_eV=0.6, sense_
     ax.set_xscale("log"); plain_log_ticks(ax.xaxis)
     ax.set_ylim(0, 1.2)
     ax.set_xlabel("시간 (초)"); ax.set_ylabel("셀 전압 (V)")
-    ax.set_title(f"{temp_c}°C에서 셀 전압 · " + sim_label("dram_baseline + 슬라이더"), fontsize=9)
+    ax.set_title(f"{temp_c}°C에서 셀 전압 · " + sim_label(f"설계안 {DESIGN.name} + 슬라이더"), fontsize=9)
     ax.grid(alpha=0.3, which="both")
     plt.show()
 
@@ -179,15 +185,61 @@ def explore(cs_fF=10.0, cbl_fF=50.0, leak85_fA=2.5, temp_c=85, ea_eV=0.6, sense_
           f" → 리텐션 스펙 {verdict(ev.retention)}")
 
 
-display(w.interactive(
+ui = w.interactive(
     explore,
-    cs_fF=w.FloatSlider(value=10, min=2, max=30, step=1, description="Cs (fF)"),
-    cbl_fF=w.FloatSlider(value=50, min=10, max=200, step=5, description="Cbl (fF)"),
-    leak85_fA=w.FloatLogSlider(value=2.5, base=10, min=-1, max=2, description="누설@85°C (fA)"),
+    cs_fF=w.FloatSlider(value=P["cs"] * 1e15, min=2, max=30, step=1, description="Cs (fF)"),
+    cbl_fF=w.FloatSlider(value=P["cbl"] * 1e15, min=10, max=200, step=5, description="Cbl (fF)"),
+    leak85_fA=w.FloatLogSlider(value=P["i_leak_ref"] * 1e15, base=10, min=-1, max=2,
+                               description="누설@85°C (fA)"),
     temp_c=w.IntSlider(value=85, min=0, max=110, step=5, description="온도 (°C)"),
-    ea_eV=w.FloatSlider(value=0.6, min=0.3, max=1.2, step=0.05, description="Ea (eV)"),
-    sense_mV=w.IntSlider(value=50, min=20, max=150, step=5, description="최소 신호 (mV)"),
-))
+    ea_eV=w.FloatSlider(value=P["ea"], min=0.3, max=1.2, step=0.05, description="Ea (eV)"),
+    sense_mV=w.IntSlider(value=round(P["sense_min"] * 1e3), min=20, max=150, step=5,
+                         description="최소 신호 (mV)"),
+)
+
+# 슬라이더 이름 → (파라미터 이름, 단위 변환)
+SLIDER_TO_PARAM = {"cs_fF": ("cs", 1e-15), "cbl_fF": ("cbl", 1e-15), "leak85_fA": ("i_leak_ref", 1e-15),
+                   "ea_eV": ("ea", 1.0), "sense_mV": ("sense_min", 1e-3)}
+name_box = w.Text(value=DESIGN.name if DESIGN.overrides else "my_design", description="설계안 이름")
+save_btn = w.Button(description="현재 설계안으로 저장", button_style="primary")
+reset_btn = w.Button(description="기준값으로 되돌리기")
+download_btn = w.Button(description="설계안 파일 내려받기")
+msg = w.Output()
+
+
+def on_save(_):
+    with msg:
+        msg.clear_output()
+        slider_values = {param: ui.kwargs[k] * scale for k, (param, scale) in SLIDER_TO_PARAM.items()}
+        design = Design(name=name_box.value.strip() or "my_design",
+                        overrides=changes_from_base(slider_values))
+        path = save_design(design)
+        print(f"저장했습니다: {design.name} (바꾼 항목: {list(design.overrides) or '없음'}) → {path}")
+        print("다음 노트북은 이 설계안을 씁니다. 이 노트북 위쪽 그래프에 반영하려면 '런타임 → 모두 실행'을 누르세요.")
+
+
+def on_reset(_):
+    with msg:
+        msg.clear_output()
+        save_design(Design(name="baseline"))
+        print("기준 설계안으로 되돌렸습니다. '런타임 → 모두 실행'을 누르면 슬라이더도 기준값으로 돌아갑니다.")
+
+
+def on_download(_):
+    with msg:
+        msg.clear_output()
+        path = save_design(load_design())
+        try:
+            from google.colab import files
+            files.download(str(path))
+        except ImportError:
+            print(f"Colab이 아니므로 파일 위치만 알려 드립니다: {path}")
+
+
+save_btn.on_click(on_save)
+reset_btn.on_click(on_reset)
+download_btn.on_click(on_download)
+display(ui, w.HBox([name_box, save_btn, reset_btn, download_btn]), msg)
 
 # %% [markdown]
 # ## 5. 이상한 점: 1초를 버티는데 왜 64 ms마다 리프레시할까?
@@ -210,6 +262,16 @@ display(w.interactive(
 # ## 7. 사용한 가정
 
 # %%
-print(f"{'키':12s} | {'값':>10s} | {'단위':6s} | {'상태':8s} | 출처")
-for key, p in load_params("dram_baseline").items():
-    print(f"{key:12s} | {p.value:10.3g} | {p.unit:6s} | {p.status:8s} | {p.source}")
+from IPython.display import Markdown
+
+
+def fmt(x):
+    return f"{x:.3g}"
+
+
+lines = [f"설계안 **{DESIGN.name}** · 굵은 글씨는 기준값에서 바꾼 항목", "",
+         "| 항목 | 기준값 | 현재 설계안 | 단위 | 상태 | 출처 |", "|---|---|---|---|---|---|"]
+for r in design_table(DESIGN):
+    cur = f"**{fmt(r.current)}**" if r.changed else fmt(r.current)
+    lines.append(f"| {r.key} | {fmt(r.base)} | {cur} | {r.unit} | {r.status} | {r.source} |")
+display(Markdown("\n".join(lines)))

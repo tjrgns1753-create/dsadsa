@@ -18,6 +18,7 @@ include = ["memdev*"]
 
 [tool.setuptools.package-data]
 "memdev.params" = ["*.yaml"]
+"memdev" = ["precomputed/*/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

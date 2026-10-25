@@ -5,6 +5,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 export DEVSIM_MATH_LIBS="libopenblas.so.0:liblapack.so.3:libblas.so.3"
+# 저장된 설계안이 섞이지 않도록 빈 작업 폴더에서 기준 설계안으로 실행한다.
+export MEMDEV_WORK="$(mktemp -d)"
 
 if [ "$#" -eq 0 ]; then
   set -- notebooks/src/*.py
