@@ -79,7 +79,8 @@ import numpy as np
 
 from memdev.dram.cell import cell_voltage, fail_voltage, retention_time
 from memdev.dram.leakage import arrhenius_leakage
-from memdev.design import Design, changes_from_base, design_table, load_design, save_design
+from memdev.design import design_table, load_design
+from memdev.widgets import design_save_panel
 from memdev.plotting import plain_log_ticks, sim_label
 
 DESIGN = load_design()
@@ -200,46 +201,11 @@ ui = w.interactive(
 # 슬라이더 이름 → (파라미터 이름, 단위 변환)
 SLIDER_TO_PARAM = {"cs_fF": ("cs", 1e-15), "cbl_fF": ("cbl", 1e-15), "leak85_fA": ("i_leak_ref", 1e-15),
                    "ea_eV": ("ea", 1.0), "sense_mV": ("sense_min", 1e-3)}
-name_box = w.Text(value=DESIGN.name if DESIGN.overrides else "my_design", description="설계안 이름")
-save_btn = w.Button(description="현재 설계안으로 저장", button_style="primary")
-reset_btn = w.Button(description="기준값으로 되돌리기")
-download_btn = w.Button(description="설계안 파일 내려받기")
-msg = w.Output()
+def slider_values():
+    return {param: ui.kwargs[k] * scale for k, (param, scale) in SLIDER_TO_PARAM.items()}
 
 
-def on_save(_):
-    with msg:
-        msg.clear_output()
-        slider_values = {param: ui.kwargs[k] * scale for k, (param, scale) in SLIDER_TO_PARAM.items()}
-        design = Design(name=name_box.value.strip() or "my_design",
-                        overrides=changes_from_base(slider_values))
-        path = save_design(design)
-        print(f"저장했습니다: {design.name} (바꾼 항목: {list(design.overrides) or '없음'}) → {path}")
-        print("다음 노트북은 이 설계안을 씁니다. 이 노트북 위쪽 그래프에 반영하려면 '런타임 → 모두 실행'을 누르세요.")
-
-
-def on_reset(_):
-    with msg:
-        msg.clear_output()
-        save_design(Design(name="baseline"))
-        print("기준 설계안으로 되돌렸습니다. '런타임 → 모두 실행'을 누르면 슬라이더도 기준값으로 돌아갑니다.")
-
-
-def on_download(_):
-    with msg:
-        msg.clear_output()
-        path = save_design(load_design())
-        try:
-            from google.colab import files
-            files.download(str(path))
-        except ImportError:
-            print(f"Colab이 아니므로 파일 위치만 알려 드립니다: {path}")
-
-
-save_btn.on_click(on_save)
-reset_btn.on_click(on_reset)
-download_btn.on_click(on_download)
-display(ui, w.HBox([name_box, save_btn, reset_btn, download_btn]), msg)
+display(ui, design_save_panel(slider_values, DESIGN.name if DESIGN.overrides else "my_design"))
 
 # %% [markdown]
 # ## 5. 이상한 점: 1초를 버티는데 왜 64 ms마다 리프레시할까?
